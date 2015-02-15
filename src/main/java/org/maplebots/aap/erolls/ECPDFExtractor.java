@@ -1,11 +1,14 @@
 package org.maplebots.aap.erolls;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.LineNumberReader;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -19,6 +22,11 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.springframework.util.StringUtils;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.ObjectCodec;
+import com.fasterxml.jackson.core.JsonGenerator.Feature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.text.pdf.PdfReader;
 import com.itextpdf.text.pdf.parser.PdfReaderContentParser;
 import com.itextpdf.text.pdf.parser.SimpleTextExtractionStrategy;
@@ -29,6 +37,7 @@ public class ECPDFExtractor {
 	private Pattern pbPattern = Pattern.compile("^(\\d+)\\s\\1\\s(.*)(1\\..*)(All Voters)");
 	private Pattern endOfPage = Pattern.compile("^Page Number : .*");
 	private Pattern pincode = Pattern.compile(".*([0-9][0-9][0-9][0-9][0-9][0-9]).*");
+	private ObjectMapper objectMapper = new ObjectMapper();
 
 	public void extractPollingBooths(String fileName, String outputFile) throws NumberFormatException, IOException {
 		System.out.println("Extracting from " + fileName);
@@ -61,7 +70,7 @@ public class ECPDFExtractor {
 			pollingBooths.add(pb.toString());
 		}
 
-		PrintWriter out = new PrintWriter(new FileOutputStream(outputFile));
+		BufferedWriter out = new BufferedWriter(new FileWriter(outputFile, true));
 		int errorCount = 0;
 		for (String pbString : pollingBooths) {
 			Matcher pbMatcher = pbPattern.matcher(pbString);
@@ -76,18 +85,21 @@ public class ECPDFExtractor {
 				if (pincodeMatcher.matches()) {
 					pollingBooth.setPincode(pincodeMatcher.group(1));
 				}
-				out.println(pollingBooth.toString());
+				StringWriter stringWriter = new StringWriter();
+				objectMapper.writeValue(stringWriter, pollingBooth);
+				out.write(stringWriter.toString());
+				out.newLine();
 			} else {
 				errorCount++;
 				System.out.println("ERROR>>>" + pbString);
 			}
 		}
-		out.flush();
 		out.close();
 		fileReader.close();
 
 		System.out.println("Extracted " + (pollingBooths.size() - errorCount) + " polling booths, with " + errorCount
 				+ " errors to file " + outputFile);
+		System.out.println("Please email the above file to mohammedsaleem@gmail.com with subject AAP VIP");
 	}
 
 	private String extract(String fileName) {
@@ -137,7 +149,7 @@ public class ECPDFExtractor {
 
 				String outputFile = line.getOptionValue("o");
 				if (!StringUtils.hasText(outputFile)) {
-					outputFile = inputFile + ".psv";
+					outputFile = inputFile + ".json";
 				}
 				new ECPDFExtractor().extractPollingBooths(inputFile, outputFile);
 			} else {
@@ -178,8 +190,8 @@ class PollingBooth {
 		this.boothName = boothName;
 	}
 
-	public String getPollingAreas() {
-		return pollingAreas.toString();
+	public String[] getPollingAreas() {
+		return StringUtils.commaDelimitedListToStringArray(pollingAreas);
 	}
 
 	public String getPincode() {
